@@ -40,7 +40,7 @@ table{border-collapse:collapse;width:100%}td{padding:5px 8px;border-bottom:1px s
   <div><h1>PSL Progress Tracker</h1><div class="mute">Four weekly photo check-ins, one monthly trend (0–8 scale)</div></div>
   <div class="row"><select id="sexSel" aria-label="Sex used for the dimorphism category"><option value="male">Male</option><option value="female">Female</option></select><select id="monthSel" aria-label="Month"></select></div>
 </div>
-<div class="note" style="margin-bottom:14px">Scores are one AI model's subjective read of a photo, not a measurement of your worth or health, and PSL itself is a community-made scale rather than science. Lighting, angle, lens and expression move the number a lot, so use the <b>same setup every week</b>: neutral expression, front-facing, daylight, camera at eye level. For adults (18+) only. Everything runs on your computer: photos are analysed by a local model and nothing is uploaded anywhere. Small local models are noisier than large cloud ones, so treat changes under ~0.5 as noise.</div>
+<div class="note" style="margin-bottom:14px">Scores are one AI model's subjective read of a photo, not a measurement of your worth or health, and PSL itself is a community-made scale rather than science. Lighting, angle, lens and expression move the number a lot, so use the <b>same setup every week</b>: neutral expression, front-facing, daylight, camera at eye level. For adults (18+) only. Everything runs on your computer: photos are analysed by a local model and nothing is uploaded anywhere. Each photo is measured with face landmarks and scored by the local model 3 times (median), which cuts noise a lot, but still treat changes under ~0.3 as noise.</div>
 <div id="grid" class="grid"></div>
 <div id="uploader" class="card" style="margin-top:14px"></div>
 <div id="detail"></div>
@@ -84,6 +84,8 @@ const TIERS=[[7.75,'True Adam','True Eve'],[6.5,'Chad','Stacy'],[6,'Chadlite','S
 const sexNow=()=>store.__sex||'male';
 const tierName=sc=>{const t=TIERS.find(t=>sc>=t[0]);return sexNow()==='female'?t[2]:t[1]};
 const bars=w=>w.harmony==null?'':`<div style="margin:6px 0 12px">${CATS.map(([k,l])=>`<div class="row sp small" style="margin-top:6px"><span>${l}</span><b>${w[k].toFixed(1)}</b></div><div class="bar"><i style="width:${w[k]/8*100}%"></i></div>`).join('')}</div>`;
+const GEO=[['symmetry_asym','Facial asymmetry','',v=>(v*100).toFixed(1)+'%','lower is better'],['thirds_dev','Thirds imbalance','',v=>(v*100).toFixed(0)+'%','lower is better'],['canthal_tilt','Canthal tilt','',v=>v.toFixed(1)+'°','about +3 to +8° is typical ideal'],['eye_spacing','Eye spacing / eye width','',v=>v.toFixed(2),'about 1.0'],['fwhr','Face width-to-height (FWHR)','',v=>v.toFixed(2),'higher reads more masculine'],['jaw_to_cheek','Jaw / cheekbone width','',v=>v.toFixed(2),'about 0.78–0.92 male, 0.70–0.84 female'],['gonial_angle','Gonial angle (approx.)','',v=>v.toFixed(0)+'°','about 112–128° male, 118–134° female'],['lip_ratio','Upper:lower lip','',v=>v.toFixed(2),'about 0.5–0.8'],['nose_to_ic','Nose width / eye gap','',v=>v.toFixed(2),'about 1.0']];
+const geoTable=g=>!g||!g.raw?'':`<details style="margin:8px 0"><summary class="small"><b>Measured from landmarks</b> (same photo = same numbers)</summary><table>${GEO.map(([k,l,,f,n])=>g.raw[k]==null?'':`<tr><td>${l}</td><td><b>${f(g.raw[k])}</b></td><td class="mute">${n}</td></tr>`).join('')}</table><p class="small mute">Harmony, Dimorphism and Angularity are 60% these measurements and 40% the AI's read; Miscellaneous (skin, brows, smile) is AI only. Measurements assume a straight-on photo and are approximate.</p></details>`;
 const catDeltas=(a,b)=>(!a||!b||a.harmony==null||b.harmony==null)?'':`<h3 class="small mute">Category change (Week 1 to Week 4)</h3><div class="row" style="gap:18px;margin-bottom:8px">${CATS.map(([k,l])=>{const d=b[k]-a[k];return `<div><div class="small mute">${l}</div><b class="${cls(d)}">${fmtD(d)}</b></div>`}).join('')}</div>`;
 function renderMonths(){const keys=[...new Set([...Object.keys(store).filter(k=>/^\d{4}-\d{2}$/.test(k)),nowKey()])].sort().reverse();
  $('monthSel').innerHTML=keys.map(k=>`<option value="${k}" ${k===cur?'selected':''}>${k}${k===nowKey()?' (current)':''}</option>`).join('')}
@@ -106,7 +108,7 @@ function render(){
  else if(ni===-1){u.innerHTML='<b>This month is complete.</b> <span class="mute">See the monthly report below. A new tracker starts next month.</span>'}
  else{u.innerHTML=`<h2>Week ${ni+1} check-in</h2><p class="small mute">${['Upload your baseline photo.','Compared against Week 1.','Compared against Weeks 1 and 2 to spot a trend.','Final photo: completes your monthly report.'][ni]}</p>
   <div class="row"><label class="b" id="upl">${busy?'Analysing…':'Choose photo'}<input id="file" type="file" accept="image/*" hidden ${busy?'disabled':''}></label>
-  <span class="small mute">${busy?'This takes ~15–30 seconds.':''}</span></div>`;
+  <span class="small mute">${busy?'Measuring landmarks + 3 model passes: ~30–60 seconds.':''}</span></div>`;
   const f=$('file');if(f)f.onchange=e=>{if(e.target.files[0])analyze(ni,e.target.files[0])}}
 
  const w=ws[sel];let h='';
@@ -115,7 +117,7 @@ function render(){
   h=`<div class="card"><div class="row sp"><h2>Week ${sel+1} report</h2><span class="pill">Confidence: ${esc(w.confidence)}</span></div>
   <div class="score">${w.score.toFixed(1)} <span class="mute small">/ 8</span></div><div style="margin:2px 0 10px"><span class="pill">${esc(tierName(w.score))}</span></div>${bars(w)}
   ${w.changeSummary?`<p>${esc(w.changeSummary)}</p>`:''}
-  <h3 class="small mute">Key score factors</h3><ul>${li(w.factors)}</ul>
+  ${geoTable(w.geo)}<h3 class="small mute">Key score factors</h3><ul>${li(w.factors)}</ul>
   <h3 class="small mute">Photo-condition notes</h3><ul>${li(w.photoQuality)}</ul>
   ${w.photoConditionImpact?`<p class="small"><b>Photo impact on change:</b> ${esc(w.photoConditionImpact)}</p>`:''}
   <h3 class="small mute">Next check-in advice</h3><p>${esc(w.advice)}</p>
@@ -154,7 +156,7 @@ async function analyze(i,file){
   const prompt=`You are the analysis engine of a PSL-scale progress tracker. Rate the face in the photo on the PSL scale (0-8, one decimal) using four categories: harmony (how well all features work together as a cohesive whole), dimorphism (how distinctly ${sexNow()==='female'?'feminine':'masculine'} the features are for a ${sexNow()}: ${sexNow()==='female'?'soft jaw, large eyes, high cheekbones, full lips':'strong jaw, heavy brow ridge, defined chin'}), angularity (sharpness and definition of jawline, cheekbones and chin; soft round features score lower), and misc (skin quality, eyebrows, nose, teeth/smile). Calibration: 4 = average adult; most adults fall between 3.5 and 5.0; 5-6 = clearly above average; 6+ = exceptionally rare. Do not inflate scores and do not default to the middle; judge each category separately. The attached image is this week's (Week ${i+1}) photo. ${prev.length?`Earlier photos are not attached. Previously assigned scores: ${prevTxt}. Keep your scoring standard consistent with those scores and only move the number when there is a real visible difference, not merely lighting/angle/expression changes.`:'This is the baseline photo.'}
 Rules: If there is no clearly visible adult face, several people, or the person looks under 18, return {"valid":false,"reason":"..."} and nothing else. Be honest but kind and constructive; emphasize controllable factors (grooming, hair, skin, lighting, posture, expression) and never insult. Do not diagnose anything.
 Return ONLY JSON: {"valid":true,"harmony":number,"dimorphism":number,"angularity":number,"misc":number,"confidence":"low|medium|high","photoQuality":[2-3 short notes on lighting/angle/expression/camera],"factors":[3-4 short key score factors],"changeSummary":"1-2 sentences about change vs earlier weeks (or baseline summary)","photoConditionImpact":"how much of any change may be photo-condition noise (empty string for baseline)","advice":"1-2 sentences for the next check-in"${i===3?`,"monthly":{"confidence":"low|medium|high","mainReasons":[2-4 strings],"nextMonth":[2-4 strings]}`:''}}`;
-  const resp=await fetch('/api/analyze',{method:'POST',body:JSON.stringify({prompt,image:r.url.split(',')[1]})});
+  const resp=await fetch('/api/analyze',{method:'POST',body:JSON.stringify({prompt,sex:sexNow(),image:r.url.split(',')[1]})});
   const j=await resp.json();if(!resp.ok)throw new Error(j.error||'Local model error');
   const out=j.out;
   let rec;
